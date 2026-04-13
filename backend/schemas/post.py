@@ -18,5 +18,6 @@ class PostResponse(BaseModel):
     likes_count: int = 0
     comments_count: int = 0
     is_liked: bool = False
+    is_bookmarked: bool = False
 
     model_config = {"from_attributes": True}

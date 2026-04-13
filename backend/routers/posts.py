@@ -3,6 +3,7 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
+from models.bookmark import Bookmark
 from models.comment import Comment
 from models.like import Like
 from models.post import Post
@@ -32,6 +33,11 @@ async def _build_post_response(
         .select_from(Like)
         .where(Like.post_id == post.id, Like.user_id == current_user_id)
     )
+    is_bookmarked = await db.scalar(
+        select(func.count())
+        .select_from(Bookmark)
+        .where(Bookmark.post_id == post.id, Bookmark.user_id == current_user_id)
+    )
     return PostResponse(
         id=post.id,
         user_id=post.user_id,
@@ -43,6 +49,7 @@ async def _build_post_response(
         likes_count=likes_count or 0,
         comments_count=comments_count or 0,
         is_liked=bool(is_liked),
+        is_bookmarked=bool(is_bookmarked),
     )
 
 
@@ -165,6 +172,67 @@ async def delete_post(
     if post.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your post")
     await db.delete(post)
+    await db.commit()
+
+
+@router.get("/saved/all", response_model=list[PostResponse])
+async def get_saved_posts(
+    page: int = 1,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Post)
+        .join(Bookmark, Bookmark.post_id == Post.id)
+        .where(Bookmark.user_id == current_user.id)
+        .order_by(desc(Bookmark.created_at))
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    posts = result.scalars().all()
+    return [await _build_post_response(db, p, current_user.id) for p in posts]
+
+
+@router.post("/{post_id}/bookmark", status_code=201)
+async def bookmark_post(
+    post_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    post = await db.get(Post, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    existing = await db.execute(
+        select(Bookmark).where(
+            Bookmark.user_id == current_user.id, Bookmark.post_id == post_id
+        )
+    )
+    if existing.scalar_one_or_none():
+        return {"message": "Already bookmarked"}
+
+    bookmark = Bookmark(user_id=current_user.id, post_id=post_id)
+    db.add(bookmark)
+    await db.commit()
+    return {"message": "Post bookmarked"}
+
+
+@router.delete("/{post_id}/bookmark", status_code=204)
+async def unbookmark_post(
+    post_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Bookmark).where(
+            Bookmark.user_id == current_user.id, Bookmark.post_id == post_id
+        )
+    )
+    bookmark = result.scalar_one_or_none()
+    if not bookmark:
+        raise HTTPException(status_code=404, detail="Not bookmarked")
+    await db.delete(bookmark)
     await db.commit()
 
 

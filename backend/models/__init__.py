@@ -5,8 +5,9 @@ from models.comment import Comment
 from models.story import Story
 from models.friendship import FriendRequest
 from models.conversation import Conversation, Message
+from models.bookmark import Bookmark
 
 __all__ = [
     "User", "Post", "Like", "Comment", "Story",
-    "FriendRequest", "Conversation", "Message",
+    "FriendRequest", "Conversation", "Message", "Bookmark",
 ]
