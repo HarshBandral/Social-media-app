@@ -1,0 +1,19 @@
+{
+  "_comment": "Copy to settings.local.json and customize. This file is gitignored.",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('Claude Code needs your attention', 'Claude Code')\""
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "EXPO_PUBLIC_API_URL": "http://localhost:3000"
+  }
+}
