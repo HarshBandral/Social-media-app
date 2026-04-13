@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from database import init_db
-from routers import auth, users, posts, comments, stories, friendships
+from routers import auth, users, posts, comments, stories, friendships, chat
 
 import os
 
@@ -38,6 +38,7 @@ app.include_router(posts.router)
 app.include_router(comments.router)
 app.include_router(stories.router)
 app.include_router(friendships.router)
+app.include_router(chat.router)
 
 
 @app.get("/")
