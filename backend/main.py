@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,6 +10,9 @@ from database import init_db
 from routers import auth, users, posts, comments, stories, friendships, chat
 
 import os
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

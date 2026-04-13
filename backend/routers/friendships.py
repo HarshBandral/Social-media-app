@@ -57,8 +57,23 @@ async def send_friend_request(
             FriendRequest.status.in_(["pending", "accepted"]),
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Request already exists or already friends")
+    existing_fr = existing.scalar_one_or_none()
+    if existing_fr:
+        if existing_fr.status == "accepted":
+            raise HTTPException(status_code=400, detail="Already friends")
+        # Return existing pending request instead of erroring
+        return await _build_request_response(db, existing_fr)
+
+    # Also clean up any old rejected requests so user can re-send
+    old_rejected = await db.execute(
+        select(FriendRequest).where(
+            FriendRequest.from_user_id == current_user.id,
+            FriendRequest.to_user_id == data.to_user_id,
+            FriendRequest.status == "rejected",
+        )
+    )
+    for old in old_rejected.scalars().all():
+        await db.delete(old)
 
     fr = FriendRequest(from_user_id=current_user.id, to_user_id=data.to_user_id)
     db.add(fr)
@@ -131,6 +146,53 @@ async def reject_request(
     await db.commit()
     await db.refresh(fr)
     return await _build_request_response(db, fr)
+
+
+@router.delete("/requests/{request_id}/cancel", status_code=204)
+async def cancel_request(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    fr = await db.get(FriendRequest, request_id)
+    if not fr or fr.from_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if fr.status != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    await db.delete(fr)
+    await db.commit()
+
+
+@router.get("/status/{user_id}")
+async def get_friendship_status(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check friendship status with another user: none, pending_sent, pending_received, friends"""
+    result = await db.execute(
+        select(FriendRequest).where(
+            or_(
+                and_(
+                    FriendRequest.from_user_id == current_user.id,
+                    FriendRequest.to_user_id == user_id,
+                ),
+                and_(
+                    FriendRequest.from_user_id == user_id,
+                    FriendRequest.to_user_id == current_user.id,
+                ),
+            ),
+            FriendRequest.status.in_(["pending", "accepted"]),
+        )
+    )
+    fr = result.scalar_one_or_none()
+    if not fr:
+        return {"status": "none", "request_id": None}
+    if fr.status == "accepted":
+        return {"status": "friends", "request_id": fr.id}
+    if fr.from_user_id == current_user.id:
+        return {"status": "pending_sent", "request_id": fr.id}
+    return {"status": "pending_received", "request_id": fr.id}
 
 
 @router.get("", response_model=list[FriendResponse])

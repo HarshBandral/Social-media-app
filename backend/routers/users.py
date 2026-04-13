@@ -117,7 +117,8 @@ async def search_users(
     result = await db.execute(
         select(User)
         .where(
-            (User.username.ilike(f"%{query}%")) | (User.full_name.ilike(f"%{query}%"))
+            User.id != current_user.id,
+            (User.username.ilike(f"%{query}%")) | (User.full_name.ilike(f"%{query}%")),
         )
         .limit(20)
     )
