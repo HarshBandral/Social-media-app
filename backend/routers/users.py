@@ -95,17 +95,35 @@ async def upload_avatar(
     return await _build_user_response(db, current_user)
 
 
-@router.get("/{user_id}", response_model=UserResponse)
-async def get_user(
-    user_id: str,
+@router.get("/recommended")
+async def get_recommended_users(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return await _build_user_response(db, user)
+    """Return users who are not already friends — suggestions to follow."""
+    from models.friendship import FriendRequest
+
+    # Get friend IDs
+    friend_reqs = await db.execute(
+        select(FriendRequest).where(
+            FriendRequest.status == "accepted",
+            (FriendRequest.from_user_id == current_user.id)
+            | (FriendRequest.to_user_id == current_user.id),
+        )
+    )
+    exclude_ids = {current_user.id}
+    for fr in friend_reqs.scalars().all():
+        exclude_ids.add(fr.from_user_id)
+        exclude_ids.add(fr.to_user_id)
+
+    result = await db.execute(
+        select(User)
+        .where(User.id.notin_(exclude_ids), User.is_active == True)  # noqa: E712
+        .order_by(func.random())
+        .limit(10)
+    )
+    users = result.scalars().all()
+    return [await _build_user_response(db, u) for u in users]
 
 
 @router.get("/search/{query}")
@@ -124,3 +142,16 @@ async def search_users(
     )
     users = result.scalars().all()
     return [await _build_user_response(db, u) for u in users]
+
+
+@router.get("/{user_id}", response_model=UserResponse)
+async def get_user(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return await _build_user_response(db, user)
